@@ -118,7 +118,7 @@ df_f = df[
 # ------------------------------------------------------------
 col1, col2, col3, col4 = st.columns(4)
 
-col1.metric("📦 Deals", len(df_f))
+col1.metric("📦 Deals", f"{len(df_f):,}")
 col2.metric("💰 Total Revenue (UZS)", f"{df_f['Sum_UZS'].sum():,.0f}")
 col3.metric(
     "✅ Success Revenue",
@@ -151,6 +151,7 @@ fig_resp_source = px.bar(
     title="Revenue by Responsible and Source"
 )
 
+fig_resp_source.update_yaxes(tickformat=",")
 st.plotly_chart(fig_resp_source, use_container_width=True)
 
 # ------------------------------------------------------------
@@ -199,6 +200,7 @@ fig_ts = px.line(
     title="Revenue Over Time (UZS)"
 )
 
+fig_ts.update_yaxes(tickformat=",")
 st.plotly_chart(fig_ts, use_container_width=True)
 
 fig_growth = px.bar(
@@ -208,6 +210,7 @@ fig_growth = px.bar(
     title="Revenue Growth Rate (%)"
 )
 
+fig_growth.update_yaxes(tickformat=".2f")
 st.plotly_chart(fig_growth, use_container_width=True)
 
 # ------------------------------------------------------------
@@ -225,6 +228,7 @@ risk_df = (
     .sort_values(by="Sum_UZS", ascending=False)
 )
 
+risk_df["Sum_UZS"] = risk_df["Sum_UZS"].map("{:,.0f}".format)
 st.dataframe(risk_df, use_container_width=True)
 
 # ------------------------------------------------------------
@@ -259,6 +263,7 @@ if len(ts) >= 3:
         title="14-Day Revenue Forecast"
     )
 
+    fig_forecast.update_yaxes(tickformat=",")
     st.plotly_chart(fig_forecast, use_container_width=True)
 else:
     st.warning("Not enough data for forecast / Bashorat uchun ma'lumot yetarli emas")
@@ -269,4 +274,8 @@ else:
 # Filtrlangan ma'lumotlar
 # ------------------------------------------------------------
 st.subheader("📄 Filtered Data")
-st.dataframe(df_f, use_container_width=True)
+
+df_f_display = df_f.copy()
+df_f_display["Sum_UZS"] = df_f_display["Sum_UZS"].map("{:,.0f}".format)
+
+st.dataframe(df_f_display, use_container_width=True)
