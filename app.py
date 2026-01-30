@@ -1,6 +1,6 @@
 # ============================================================
-# SALES ANALYTICS & FORECAST DASHBOARD
-# Streamlit + Excel + ML
+# SALES ANALYTICS & FORECAST DASHBOARD (SENIOR LEVEL)
+# Currency-aware • Time filter 2024–2026 • Responsible & Source
 # ============================================================
 
 import streamlit as st
@@ -10,27 +10,41 @@ import plotly.express as px
 from sklearn.linear_model import LinearRegression
 
 # ------------------------------------------------------------
-# PAGE CONFIG
+# PAGE CONFIGURATION
+# Page settings
 # Sahifa sozlamalari
 # ------------------------------------------------------------
 st.set_page_config(page_title="Sales Analytics Dashboard", layout="wide")
 st.title("📊 Sales Analytics, Risk & Forecast Dashboard")
 
 # ------------------------------------------------------------
+# GLOBAL SETTINGS
+# Exchange rate settings
+# Valyuta kursi sozlamasi
+# ------------------------------------------------------------
+USD_TO_UZS = st.sidebar.number_input(
+    "USD → UZS exchange rate / Dollar → So'm kursi",
+    value=12500,
+    step=100
+)
+
+# ------------------------------------------------------------
 # FILE UPLOAD
+# Upload Excel file
 # Excel faylni yuklash
 # ------------------------------------------------------------
 uploaded_file = st.file_uploader(
-    "📂 Upload Excel file (xlsx format)",
+    "📂 Upload Excel file (xlsx)",
     type=["xlsx"]
 )
 
 if uploaded_file is None:
-    st.info("⬆️ Analizni boshlash uchun Excel fayl yuklang")
+    st.info("⬆️ Upload Excel file to start analysis / Analizni boshlash uchun Excel yuklang")
     st.stop()
 
 # ------------------------------------------------------------
-# LOAD & CLEAN DATA
+# LOAD & PREPROCESS DATA
+# Read and clean data
 # Ma'lumotlarni o‘qish va tozalash
 # ------------------------------------------------------------
 df = pd.read_excel(uploaded_file)
@@ -41,30 +55,56 @@ df["start date"] = pd.to_datetime(
     errors="coerce"
 )
 
-df["Sum"] = pd.to_numeric(
-    df["Sum"],
-    errors="coerce"
-).fillna(0)
+df["Sum"] = pd.to_numeric(df["Sum"], errors="coerce").fillna(0)
+
+# ------------------------------------------------------------
+# CURRENCY NORMALIZATION
+# Convert all amounts to UZS
+# Barcha summalarni so‘mga o‘tkazish
+# ------------------------------------------------------------
+df["Sum_UZS"] = np.where(
+    df["Currency"].str.lower() == "dollar",
+    df["Sum"] * USD_TO_UZS,
+    df["Sum"]
+)
+
+# ------------------------------------------------------------
+# DATE FILTER (2024–2026)
+# Time filtering
+# Vaqt bo‘yicha filtr
+# ------------------------------------------------------------
+df = df[
+    (df["start date"].dt.year >= 2024) &
+    (df["start date"].dt.year <= 2026)
+]
 
 # ------------------------------------------------------------
 # SIDEBAR FILTERS
-# Filtrlar
+# Responsible & Source filters
+# Mas'ul shaxs va manba filtrlari
 # ------------------------------------------------------------
 st.sidebar.header("🔎 Filters")
 
 responsible_filter = st.sidebar.multiselect(
     "Responsible / Mas'ul shaxs",
-    options=df["Responsible"].unique(),
-    default=df["Responsible"].unique()
+    options=sorted(df["Responsible"].dropna().unique()),
+    default=sorted(df["Responsible"].dropna().unique())
+)
+
+source_filter = st.sidebar.multiselect(
+    "Source / Manba",
+    options=sorted(df["Source"].dropna().unique()),
+    default=sorted(df["Source"].dropna().unique())
 )
 
 date_filter = st.sidebar.date_input(
     "Date range / Sana oralig‘i",
-    [df["start date"].min(), df["start date"].max()]
+    [pd.to_datetime("2024-01-01"), pd.to_datetime("2026-12-31")]
 )
 
 df_f = df[
     (df["Responsible"].isin(responsible_filter)) &
+    (df["Source"].isin(source_filter)) &
     (df["start date"].between(
         pd.to_datetime(date_filter[0]),
         pd.to_datetime(date_filter[1])
@@ -73,51 +113,55 @@ df_f = df[
 
 # ------------------------------------------------------------
 # KPI METRICS
+# Key business indicators
 # Asosiy biznes ko‘rsatkichlari
 # ------------------------------------------------------------
 col1, col2, col3, col4 = st.columns(4)
 
 col1.metric("📦 Deals", len(df_f))
-col2.metric("💰 Total Revenue", f"{df_f['Sum'].sum():,.0f}")
+col2.metric("💰 Total Revenue (UZS)", f"{df_f['Sum_UZS'].sum():,.0f}")
 col3.metric(
     "✅ Success Revenue",
-    f"{df_f[df_f['Transaction stage']=='Success']['Sum'].sum():,.0f}"
+    f"{df_f[df_f['Transaction stage']=='Success']['Sum_UZS'].sum():,.0f}"
 )
 col4.metric(
     "⚠️ Debtors Amount",
-    f"{df_f[df_f['Transaction stage']=='Debtors']['Sum'].sum():,.0f}"
+    f"{df_f[df_f['Transaction stage']=='Debtors']['Sum_UZS'].sum():,.0f}"
 )
 
 # ------------------------------------------------------------
-# RESPONSIBLE PERFORMANCE
-# Mas'ul shaxslar bo‘yicha analiz
+# RESPONSIBLE × SOURCE ANALYSIS
+# Who sold how much from which source
+# Kim qaysi manbadan qancha sotdi
 # ------------------------------------------------------------
-st.subheader("👤 Responsible Performance Analysis")
+st.subheader("👤 Responsible × Source Revenue Analysis")
 
-resp_df = (
-    df_f.groupby("Responsible")["Sum"]
+resp_source_df = (
+    df_f.groupby(["Responsible", "Source"])["Sum_UZS"]
     .sum()
     .reset_index()
-    .sort_values(by="Sum", ascending=False)
+    .sort_values(by="Sum_UZS", ascending=False)
 )
 
-fig_resp = px.bar(
-    resp_df,
+fig_resp_source = px.bar(
+    resp_source_df,
     x="Responsible",
-    y="Sum",
-    title="Revenue by Responsible"
+    y="Sum_UZS",
+    color="Source",
+    title="Revenue by Responsible and Source"
 )
 
-st.plotly_chart(fig_resp, use_container_width=True)
+st.plotly_chart(fig_resp_source, use_container_width=True)
 
 # ------------------------------------------------------------
 # TRANSACTION STAGE ANALYSIS
+# Deal stages & funnel
 # Bitim bosqichlari tahlili
 # ------------------------------------------------------------
 st.subheader("📌 Transaction Stage Analysis")
 
 stage_df = (
-    df_f.groupby("Transaction stage")["Sum"]
+    df_f.groupby("Transaction stage")["Sum_UZS"]
     .sum()
     .reset_index()
 )
@@ -125,80 +169,76 @@ stage_df = (
 fig_stage = px.pie(
     stage_df,
     names="Transaction stage",
-    values="Sum",
-    title="Stage Distribution"
+    values="Sum_UZS",
+    title="Stage Distribution (UZS)"
 )
 
 st.plotly_chart(fig_stage, use_container_width=True)
 
 # ------------------------------------------------------------
-# TIME SERIES ANALYSIS
-# Vaqt bo‘yicha tushum
+# TIME SERIES & GROWTH
+# Revenue trend and growth rate
+# Vaqt bo‘yicha tushum va o‘sish
 # ------------------------------------------------------------
-st.subheader("📈 Revenue Over Time")
+st.subheader("📈 Revenue Trend & Growth")
 
 ts = (
-    df_f.groupby("start date")["Sum"]
+    df_f.groupby("start date")["Sum_UZS"]
     .sum()
     .reset_index()
+    .sort_values("start date")
 )
+
+ts["Growth %"] = ts["Sum_UZS"].pct_change() * 100
 
 fig_ts = px.line(
     ts,
     x="start date",
-    y="Sum",
+    y="Sum_UZS",
     markers=True,
-    title="Daily Revenue Trend"
+    title="Revenue Over Time (UZS)"
 )
 
 st.plotly_chart(fig_ts, use_container_width=True)
-
-# ------------------------------------------------------------
-# ADDITIONAL ANALYSIS: GROWTH RATE
-# Qo‘shimcha analiz: O‘sish foizi
-# ------------------------------------------------------------
-st.subheader("📊 Revenue Growth Rate")
-
-ts["Growth %"] = ts["Sum"].pct_change() * 100
 
 fig_growth = px.bar(
     ts,
     x="start date",
     y="Growth %",
-    title="Daily Growth Percentage"
+    title="Revenue Growth Rate (%)"
 )
 
 st.plotly_chart(fig_growth, use_container_width=True)
 
 # ------------------------------------------------------------
 # RISK ANALYSIS
+# Debtors monitoring
 # Qarzdorlik riski
 # ------------------------------------------------------------
-st.subheader("🚨 Risk Analysis")
-
-df_f["Risk Level"] = df_f["Transaction stage"].apply(
-    lambda x: "High Risk" if x == "Debtors" else "Normal"
-)
+st.subheader("🚨 Risk Analysis (Debtors)")
 
 risk_df = (
-    df_f.groupby("Risk Level")["Sum"]
+    df_f[df_f["Transaction stage"] == "Debtors"]
+    .groupby("Responsible")["Sum_UZS"]
     .sum()
     .reset_index()
+    .sort_values(by="Sum_UZS", ascending=False)
 )
 
 st.dataframe(risk_df, use_container_width=True)
 
 # ------------------------------------------------------------
 # FORECASTING (ML)
+# Future revenue prediction
 # Kelajak tushum bashorati
 # ------------------------------------------------------------
 st.subheader("🔮 Revenue Forecast (Next 14 Days)")
 
-if len(ts) >= 2:
+if len(ts) >= 3:
     ts["idx"] = np.arange(len(ts))
 
     X = ts[["idx"]]
-    y = ts["Sum"]
+    y = ts["Sum_UZS"]
 
     model = LinearRegression()
     model.fit(X, y)
@@ -208,24 +248,25 @@ if len(ts) >= 2:
 
     forecast_df = pd.DataFrame({
         "Day": range(1, 15),
-        "Forecast Revenue": forecast
+        "Forecast Revenue (UZS)": forecast
     })
 
     fig_forecast = px.line(
         forecast_df,
         x="Day",
-        y="Forecast Revenue",
+        y="Forecast Revenue (UZS)",
         markers=True,
-        title="Forecasted Revenue"
+        title="14-Day Revenue Forecast"
     )
 
     st.plotly_chart(fig_forecast, use_container_width=True)
 else:
-    st.warning("Forecast uchun ma'lumot yetarli emas")
+    st.warning("Not enough data for forecast / Bashorat uchun ma'lumot yetarli emas")
 
 # ------------------------------------------------------------
-# DATA TABLE
-# Yakuniy jadval
+# FINAL DATA VIEW
+# Filtered dataset
+# Filtrlangan ma'lumotlar
 # ------------------------------------------------------------
-st.subheader("📄 Filtered Data Table")
+st.subheader("📄 Filtered Data")
 st.dataframe(df_f, use_container_width=True)
