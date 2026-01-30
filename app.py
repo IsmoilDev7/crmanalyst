@@ -1,242 +1,231 @@
-# =========================================================
-# IMPORT LIBRARIES
-# Import required libraries
-# Kerakli kutubxonalarni chaqiramiz
-# =========================================================
+# ============================================================
+# SALES ANALYTICS & FORECAST DASHBOARD
+# Streamlit + Excel + ML
+# ============================================================
 
-import pandas as pd                      # Data analysis / Ma'lumotlar tahlili
-import numpy as np                       # Numerical calculations / Sonli hisoblar
-import streamlit as st                   # Web dashboard / Web interfeys
-import plotly.express as px              # Interactive charts / Interaktiv grafiklar
-from sklearn.linear_model import LinearRegression  # ML Forecast / Bashorat modeli
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+from sklearn.linear_model import LinearRegression
 
-# =========================================================
-# STREAMLIT PAGE SETTINGS
-# Configure page layout
+# ------------------------------------------------------------
+# PAGE CONFIG
 # Sahifa sozlamalari
-# =========================================================
-
-st.set_page_config(
-    page_title="Sales Analytics & Forecast Dashboard",
-    layout="wide"
-)
-
+# ------------------------------------------------------------
+st.set_page_config(page_title="Sales Analytics Dashboard", layout="wide")
 st.title("📊 Sales Analytics, Risk & Forecast Dashboard")
-st.caption("Excel upload • Filters • KPI • Risk • Forecast")
 
-# =========================================================
-# FILE UPLOAD SECTION
-# Upload Excel file from computer
-# Excel faylni kompyuterdan yuklash
-# =========================================================
-
+# ------------------------------------------------------------
+# FILE UPLOAD
+# Excel faylni yuklash
+# ------------------------------------------------------------
 uploaded_file = st.file_uploader(
-    "📂 Upload Excel file / Excel faylni yuklang",
-    type=["xlsx", "xls"]
+    "📂 Upload Excel file (xlsx format)",
+    type=["xlsx"]
 )
 
 if uploaded_file is None:
-    st.warning("❗ Please upload Excel file to start analysis / Analiz uchun Excel yuklang")
+    st.info("⬆️ Analizni boshlash uchun Excel fayl yuklang")
     st.stop()
 
-# =========================================================
+# ------------------------------------------------------------
 # LOAD & CLEAN DATA
-# Read Excel and preprocess data
-# Excel o‘qish va tozalash
-# =========================================================
-
+# Ma'lumotlarni o‘qish va tozalash
+# ------------------------------------------------------------
 df = pd.read_excel(uploaded_file)
 
-df['start date'] = pd.to_datetime(
-    df['start date'],
+df["start date"] = pd.to_datetime(
+    df["start date"],
     dayfirst=True,
-    errors='coerce'
+    errors="coerce"
 )
 
-df['Sum'] = pd.to_numeric(
-    df['Sum'],
-    errors='coerce'
+df["Sum"] = pd.to_numeric(
+    df["Sum"],
+    errors="coerce"
 ).fillna(0)
 
-# =========================================================
+# ------------------------------------------------------------
 # SIDEBAR FILTERS
-# Responsible and Date filters
-# Mas'ul shaxs va Sana filtrlari
-# =========================================================
-
-st.sidebar.header("🔎 Filters / Filtrlar")
+# Filtrlar
+# ------------------------------------------------------------
+st.sidebar.header("🔎 Filters")
 
 responsible_filter = st.sidebar.multiselect(
     "Responsible / Mas'ul shaxs",
-    options=df['Responsible'].unique(),
-    default=df['Responsible'].unique()
+    options=df["Responsible"].unique(),
+    default=df["Responsible"].unique()
 )
 
 date_filter = st.sidebar.date_input(
     "Date range / Sana oralig‘i",
-    [df['start date'].min(), df['start date'].max()]
+    [df["start date"].min(), df["start date"].max()]
 )
 
 df_f = df[
-    (df['Responsible'].isin(responsible_filter)) &
-    (df['start date'].between(
+    (df["Responsible"].isin(responsible_filter)) &
+    (df["start date"].between(
         pd.to_datetime(date_filter[0]),
         pd.to_datetime(date_filter[1])
     ))
 ]
 
-# =========================================================
+# ------------------------------------------------------------
 # KPI METRICS
-# Main business indicators
 # Asosiy biznes ko‘rsatkichlari
-# =========================================================
-
-total_deals = len(df_f)                                   # Total deals / Jami bitimlar
-total_sum = df_f['Sum'].sum()                             # Total revenue / Jami summa
-success_sum = df_f[df_f['Transaction stage']=="Success"]['Sum'].sum()
-debtors_sum = df_f[df_f['Transaction stage']=="Debtors"]['Sum'].sum()
-
+# ------------------------------------------------------------
 col1, col2, col3, col4 = st.columns(4)
 
-col1.metric("📦 Deals", total_deals)
-col2.metric("💰 Revenue", f"{total_sum:,.0f}")
-col3.metric("✅ Success", f"{success_sum:,.0f}")
-col4.metric("⚠️ Debtors", f"{debtors_sum:,.0f}")
+col1.metric("📦 Deals", len(df_f))
+col2.metric("💰 Total Revenue", f"{df_f['Sum'].sum():,.0f}")
+col3.metric(
+    "✅ Success Revenue",
+    f"{df_f[df_f['Transaction stage']=='Success']['Sum'].sum():,.0f}"
+)
+col4.metric(
+    "⚠️ Debtors Amount",
+    f"{df_f[df_f['Transaction stage']=='Debtors']['Sum'].sum():,.0f}"
+)
 
-# =========================================================
-# RESPONSIBLE PERFORMANCE ANALYSIS
-# Sales by responsible person
-# Mas'ul shaxslar bo‘yicha tahlil
-# =========================================================
+# ------------------------------------------------------------
+# RESPONSIBLE PERFORMANCE
+# Mas'ul shaxslar bo‘yicha analiz
+# ------------------------------------------------------------
+st.subheader("👤 Responsible Performance Analysis")
 
-st.subheader("👤 Responsible Performance / Mas'ul shaxslar tahlili")
-
-resp_summary = (
-    df_f.groupby('Responsible')['Sum']
+resp_df = (
+    df_f.groupby("Responsible")["Sum"]
     .sum()
     .reset_index()
-    .sort_values(by='Sum', ascending=False)
+    .sort_values(by="Sum", ascending=False)
 )
 
 fig_resp = px.bar(
-    resp_summary,
-    x='Responsible',
-    y='Sum',
-    title="Revenue by Responsible / Mas'ul shaxslar bo‘yicha tushum"
+    resp_df,
+    x="Responsible",
+    y="Sum",
+    title="Revenue by Responsible"
 )
 
 st.plotly_chart(fig_resp, use_container_width=True)
 
-# =========================================================
+# ------------------------------------------------------------
 # TRANSACTION STAGE ANALYSIS
-# Funnel & risk analysis
-# Bitim bosqichlari va risk
-# =========================================================
+# Bitim bosqichlari tahlili
+# ------------------------------------------------------------
+st.subheader("📌 Transaction Stage Analysis")
 
-st.subheader("📌 Transaction Stage Analysis / Bitim bosqichlari")
-
-stage_summary = (
-    df_f.groupby('Transaction stage')['Sum']
+stage_df = (
+    df_f.groupby("Transaction stage")["Sum"]
     .sum()
     .reset_index()
 )
 
 fig_stage = px.pie(
-    stage_summary,
-    names='Transaction stage',
-    values='Sum',
-    title="Stage Distribution / Bosqichlar taqsimoti"
+    stage_df,
+    names="Transaction stage",
+    values="Sum",
+    title="Stage Distribution"
 )
 
 st.plotly_chart(fig_stage, use_container_width=True)
 
-# =========================================================
+# ------------------------------------------------------------
 # TIME SERIES ANALYSIS
-# Daily revenue trend
-# Kunlik tushum trendi
-# =========================================================
+# Vaqt bo‘yicha tushum
+# ------------------------------------------------------------
+st.subheader("📈 Revenue Over Time")
 
-st.subheader("📈 Revenue Over Time / Vaqt bo‘yicha tushum")
-
-time_series = (
-    df_f.groupby('start date')['Sum']
+ts = (
+    df_f.groupby("start date")["Sum"]
     .sum()
     .reset_index()
 )
 
-fig_time = px.line(
-    time_series,
-    x='start date',
-    y='Sum',
+fig_ts = px.line(
+    ts,
+    x="start date",
+    y="Sum",
     markers=True,
-    title="Daily Revenue Trend / Kunlik tushum grafigi"
+    title="Daily Revenue Trend"
 )
 
-st.plotly_chart(fig_time, use_container_width=True)
+st.plotly_chart(fig_ts, use_container_width=True)
 
-# =========================================================
+# ------------------------------------------------------------
+# ADDITIONAL ANALYSIS: GROWTH RATE
+# Qo‘shimcha analiz: O‘sish foizi
+# ------------------------------------------------------------
+st.subheader("📊 Revenue Growth Rate")
+
+ts["Growth %"] = ts["Sum"].pct_change() * 100
+
+fig_growth = px.bar(
+    ts,
+    x="start date",
+    y="Growth %",
+    title="Daily Growth Percentage"
+)
+
+st.plotly_chart(fig_growth, use_container_width=True)
+
+# ------------------------------------------------------------
 # RISK ANALYSIS
-# Debtors risk indicator
 # Qarzdorlik riski
-# =========================================================
+# ------------------------------------------------------------
+st.subheader("🚨 Risk Analysis")
 
-st.subheader("🚨 Risk Analysis / Risk tahlili")
-
-df_f['Risk_Flag'] = df_f['Transaction stage'].apply(
+df_f["Risk Level"] = df_f["Transaction stage"].apply(
     lambda x: "High Risk" if x == "Debtors" else "Normal"
 )
 
-risk_table = (
-    df_f.groupby('Risk_Flag')['Sum']
+risk_df = (
+    df_f.groupby("Risk Level")["Sum"]
     .sum()
     .reset_index()
 )
 
-st.dataframe(risk_table, use_container_width=True)
+st.dataframe(risk_df, use_container_width=True)
 
-# =========================================================
+# ------------------------------------------------------------
 # FORECASTING (ML)
-# Future revenue prediction
 # Kelajak tushum bashorati
-# =========================================================
+# ------------------------------------------------------------
+st.subheader("🔮 Revenue Forecast (Next 14 Days)")
 
-st.subheader("🔮 Revenue Forecast (Next 14 Days) / 14 kunlik bashorat")
+if len(ts) >= 2:
+    ts["idx"] = np.arange(len(ts))
 
-if len(time_series) >= 2:
-    time_series['day_index'] = np.arange(len(time_series))
-
-    X = time_series[['day_index']]
-    y = time_series['Sum']
+    X = ts[["idx"]]
+    y = ts["Sum"]
 
     model = LinearRegression()
     model.fit(X, y)
 
-    future_days = 14
-    future_index = np.arange(len(time_series), len(time_series) + future_days).reshape(-1, 1)
-    forecast_values = model.predict(future_index)
+    future_idx = np.arange(len(ts), len(ts) + 14).reshape(-1, 1)
+    forecast = model.predict(future_idx)
 
     forecast_df = pd.DataFrame({
-        "Day": range(1, future_days + 1),
-        "Forecast_Sum": forecast_values
+        "Day": range(1, 15),
+        "Forecast Revenue": forecast
     })
 
     fig_forecast = px.line(
         forecast_df,
-        x='Day',
-        y='Forecast_Sum',
+        x="Day",
+        y="Forecast Revenue",
         markers=True,
-        title="Forecasted Revenue / Bashorat qilingan tushum"
+        title="Forecasted Revenue"
     )
 
     st.plotly_chart(fig_forecast, use_container_width=True)
 else:
-    st.info("Not enough data for forecast / Bashorat uchun ma'lumot yetarli emas")
+    st.warning("Forecast uchun ma'lumot yetarli emas")
 
-# =========================================================
-# RAW DATA VIEW
-# Show filtered table
-# Filtrlangan jadval
-# =========================================================
-
-st.subheader("📄 Filtered Data / Filtrlangan ma'lumotlar")
+# ------------------------------------------------------------
+# DATA TABLE
+# Yakuniy jadval
+# ------------------------------------------------------------
+st.subheader("📄 Filtered Data Table")
 st.dataframe(df_f, use_container_width=True)
